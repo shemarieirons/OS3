@@ -1,115 +1,101 @@
 // C program to demonstrate use of fork() and pipe() 
-#include<stdio.h> 
-#include<stdlib.h> 
-#include<unistd.h> 
-#include<sys/types.h> 
-#include<string.h> 
-#include<sys/wait.h> 
-  
-int main() 
-{ 
-    // We use two pipes 
-    // First pipe to send input string from parent 
-    // Second pipe to send concatenated string from child 
-  
-    int fd1[2];  // Used to store two ends of first pipe 
-    int fd2[2];  // Used to store two ends of second pipe 
-  
-    char fixed_str1[] = "howard.edu";
-    char fixed_str2[] = "gobison.org"; 
-    char input_str[100]; 
-    char second_input[100]; 
-    pid_t p; 
-  
-    if (pipe(fd1)==-1) 
-    { 
-        fprintf(stderr, "Pipe Failed" ); 
-        return 1; 
-    } 
-    if (pipe(fd2)==-1) 
-    { 
-        fprintf(stderr, "Pipe Failed" ); 
-        return 1; 
-    } 
-  
-    printf("Enter a string to concatenate:");
-    scanf("%s", input_str); 
-    p = fork(); 
-  
-    if (p < 0) 
-    { 
-        fprintf(stderr, "fork Failed" ); 
-        return 1; 
-    } 
-  
-    // Parent process 
-    else if (p > 0) 
-    { 
-  
-        close(fd1[0]);  // Close reading end of pipes 
-        close(fd2[1]);
-  
-        // Write input string and close writing end of first 
-        // pipe. 
-        write(fd1[1], input_str, strlen(input_str)+1); 
-        
-  
-        // Wait for child to print the concatenated string 
-        wait(NULL); 
-  
-        char received_str[200]; 
-        read(fd2[0], received_str, 200); 
-  
-        close(fd2[0]); // Close writing end of pipes 
-        close(fd1[1]); 
-  
-        // Concatenate a fixed string with it 
-        int k = strlen(received_str); 
-        int i; 
-        for (i=0; i<strlen(fixed_str2); i++) 
-            received_str[k++] = fixed_str2[i]; 
-  
-        received_str[k] = '\0';   // string ends with '\0' 
-  
-        printf("Output : %s\n", received_str); 
-    } 
-  
-    // child process 
-    else
-    { 
-        close(fd1[1]);  // Close writing end of first pipes 
-        close(fd2[0]); 
-  
-        // Read a string using first pipe 
-        char concat_str[200]; 
-        read(fd1[0], concat_str, 100); 
-  
-        // Concatenate a fixed string with it 
-        int k = strlen(concat_str); 
-        int i; 
-        for (i=0; i<strlen(fixed_str1); i++) 
-            concat_str[k++] = fixed_str1[i]; 
-  
-        concat_str[k] = '\0';   // string ends with '\0' 
-  
-        printf("Output : %s\n", concat_str); 
-  
-        printf("Input : "); 
-        scanf("%s", second_input); 
-  
-        k = strlen(concat_str); 
-        for (i=0; i<strlen(second_input); i++) 
-            concat_str[k++] = second_input[i]; 
-  
-        concat_str[k] = '\0'; 
-  
-        write(fd2[1], concat_str, strlen(concat_str)+1); 
-  
-        // Close both reading ends 
-        close(fd1[0]); 
-        close(fd2[1]); 
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <sys/types.h>
+#include <string.h>
+#include <sys/wait.h>
 
-  
-        exit(0); 
+int main() 
+{
+    int fd1[2];  // Parent → Child
+    int fd2[2];  // Child → Parent
+
+    char fixed_str1[] = "howard.edu";
+    char fixed_str2[] = "gobison.org";
+
+    char input_str[100];
+    char second_input[100];
+
+    if (pipe(fd1) == -1 || pipe(fd2) == -1) {
+        perror("Pipe Failed");
+        exit(1);
+    }
+
+    printf("Input : ");
+    if (scanf("%99s", input_str) != 1) {
+        fprintf(stderr, "Input Failed\n");
+        exit(1);
+    }
+
+    pid_t p = fork();
+
+    if (p < 0) {
+        perror("fork Failed");
+        exit(1);
+    }
+
+    /* ===========================
+         PARENT PROCESS (P1)
+       =========================== */
+    if (p > 0) 
+    {
+        close(fd1[0]);  // P1 doesn't read from pipe1
+        close(fd2[1]);  // P1 doesn't write to pipe2
+
+        // Send first input to child
+        write(fd1[1], input_str, strlen(input_str) + 1);
+        close(fd1[1]);
+
+        // Wait for P2 to finish
+        wait(NULL);
+
+        // Receive processed string from P2
+        char received_str[300];
+        read(fd2[0], received_str, sizeof(received_str));
+        close(fd2[0]);
+
+        // Append gobison.org
+        strcat(received_str, fixed_str2);
+
+        printf("Output : %s\n", received_str);
     } 
-} 
+
+    /* ===========================
+         CHILD PROCESS (P2)
+       =========================== */
+    else 
+    {
+        close(fd1[1]);  // P2 doesn't write to pipe1
+        close(fd2[0]);  // P2 doesn't read from pipe2
+
+        // Read initial string from P1
+        char concat_str[300];
+        read(fd1[0], concat_str, sizeof(concat_str));
+        close(fd1[0]);
+
+        // Append howard.edu
+        strcat(concat_str, fixed_str1);
+
+        // Print first concatenation
+        printf("Output : %s\n", concat_str);
+
+        // Prompt for second input
+        printf("Second Input : ");
+        if (scanf("%99s", second_input) != 1) {
+            fprintf(stderr, "Input Failed\n");
+            exit(1);
+        }
+
+        // Append second input
+        strcat(concat_str, second_input);
+
+        // Send result back to P1
+        write(fd2[1], concat_str, strlen(concat_str) + 1);
+        close(fd2[1]);
+
+        exit(0);
+    }
+
+    return 0;
+}
